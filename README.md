@@ -20,6 +20,55 @@ $ lock -- npm run dev
 
 ---
 
+## The idea
+
+lock is for **small teams that ship fast** and don't want to run a secrets
+platform to do it. It focuses on three things:
+
+### 🚀 Fast deploys, without the infrastructure
+
+No Vault cluster, no SaaS, no accounts, no network calls. The environment
+travels with the repo as `.env.lock`, and a server needs exactly one secret to
+open it: `LOCK_KEY`. Setting up a new server or CI pipeline takes two commands:
+
+```bash
+lock init --print --name staging          # key for the new server
+lock recipient add Staging staging lockid1:…
+```
+
+Then `lock -- ./deploy.sh` on the server, or the GitHub Action in your
+workflow, and that's it.
+
+### 🔒 Moving secrets safely
+
+Secrets stop travelling through Slack DMs, pasted `.env` files and
+"can you send me the staging keys?". They move through git, encrypted to the
+exact machines and people that need them and signed by someone you trust.
+
+- **Granting access** to a teammate, server or CI runner takes one command.
+- **Revoking access** takes one command too, and it rotates the key.
+- **Every change** is a commit: you can see when a variable was added and who
+  can read it, without exposing a single value.
+
+### ⚡ Test with the same environments, instantly
+
+Running against staging or production values locally shouldn't mean hunting
+for the right `.env`:
+
+```bash
+lock Staging -- npm test         # same variables the staging server uses
+lock Production -- npm run migrate:status
+```
+
+Worktrees, clones, CI and servers all read the same `.env.lock`, so "works on
+my machine" stops being a variable problem. `lock check` catches variables the
+code uses but the environment doesn't define, before you push.
+
+> **What lock is not:** an enterprise secrets manager. If you need dynamic
+> credentials, per-access audit logs or fine-grained policies, use Vault or
+> your cloud's secret manager. lock is for teams where a handful of people and
+> servers share a handful of environments and want that to be simple and safe.
+
 ## Why?
 
 Plain-text `.env` files have three problems:
