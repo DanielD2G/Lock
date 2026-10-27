@@ -1,0 +1,71 @@
+# Publica un release con binarios para macOS y Linux al subir un tag vX.Y.Z.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: aarch64-apple-darwin, os: macos-14, test: true }
+          - { target: x86_64-apple-darwin, os: macos-14, test: false }
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-24.04, test: true }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-24.04-arm, test: true }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --target ${{ matrix.target }}
+          rustup default stable
+
+      - name: musl
+        if: contains(matrix.target, 'linux-musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Test
+        if: matrix.test
+        run: cargo test --release --locked --target ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package
+        run: |
+          name=lock-${{ matrix.target }}.tar.gz
+          tar -C target/${{ matrix.target }}/release -czf "$name" lock
+          shasum -a 256 "$name" > "$name.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lock-${{ matrix.target }}
+          path: lock-${{ matrix.target }}.tar.gz*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        run: cat dist/*.sha256 > dist/SHA256SUMS
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "lock $GITHUB_REF_NAME" \
+            --generate-notes

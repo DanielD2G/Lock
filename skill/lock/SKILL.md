@@ -17,17 +17,17 @@ servidores).
    `echo $X`, `base64`, escribirlas a un archivo, `cat .env`).
 2. **Nunca pidas que te peguen un secreto en el chat.** Si hace falta un valor,
    el usuario lo escribe en el prompt oculto de `lock set` en su terminal.
-3. **Para ejecutar algo con el entorno, usa `lock run`:**
+3. **Para ejecutar algo con el entorno, usa `lock exec`:**
    ```bash
-   lock run -- npm run dev
-   lock run -- pytest
-   lock run Navis -- node scripts/migrate.js   # entorno explicito
+   lock -- npm run dev
+   lock -- pytest
+   lock Navis -- node scripts/migrate.js   # entorno explicito
    ```
-   Cada `lock run` muestra un dialogo de Touch ID con el entorno y el comando.
+   Cada `lock exec` muestra un dialogo de Touch ID con el entorno y el comando.
    Avisa antes en una linea ("voy a correr X con Navis, te va a pedir Touch ID").
    Usa comandos cortos y legibles para que el usuario entienda que aprueba. Si
    lo cancela, no insistas: pregunta.
-4. La salida de `lock run` llega redactada (`[lock:NOMBRE]`). No intentes
+4. La salida de `lock exec` llega redactada (`[lock:NOMBRE]`). No intentes
    revertirlo ni esquivarlo.
 5. **Nunca crees ni edites `.env` en texto plano**, ni escribas secretos en
    codigo, tests, logs o commits. Nunca edites `.env.lock` a mano.

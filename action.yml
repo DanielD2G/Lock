@@ -1,0 +1,63 @@
+name: lock
+description: Load lock-encrypted environment variables (.env.lock) into a GitHub Actions workflow.
+author: DanielD2G
+branding:
+  icon: lock
+  color: gray-dark
+
+inputs:
+  key:
+    description: Deploy key (the output of `lock init --print`). Store it as a secret.
+    required: true
+  env:
+    description: Environment to load. Defaults to the one in the repo's .env.lock.
+    required: false
+    default: ""
+  export:
+    description: Export the variables (masked in logs) to the following steps.
+    required: false
+    default: "false"
+  run:
+    description: Command to run with the environment loaded (output is redacted).
+    required: false
+    default: ""
+  version:
+    description: lock release to install (tag), or "latest".
+    required: false
+    default: latest
+  working-directory:
+    description: Directory containing the .env.lock.
+    required: false
+    default: "."
+
+runs:
+  using: composite
+  steps:
+    - name: Install lock
+      shell: bash
+      env:
+        LOCK_VERSION: ${{ inputs.version }}
+        LOCK_INSTALL_DIR: ${{ runner.temp }}/lock-bin
+        INSTALLER: ${{ github.action_path }}/install.sh
+      run: |
+        sh "$INSTALLER"
+        echo "$LOCK_INSTALL_DIR" >> "$GITHUB_PATH"
+
+    - name: Export variables
+      if: inputs.export == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        LOCK_KEY: ${{ inputs.key }}
+        LOCK_ENV: ${{ inputs.env }}
+      run: '"$RUNNER_TEMP/lock-bin/lock" load ${LOCK_ENV:+"$LOCK_ENV"} --format github'
+
+    - name: Run
+      if: inputs.run != ''
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        LOCK_KEY: ${{ inputs.key }}
+        LOCK_ENV: ${{ inputs.env }}
+        LOCK_RUN: ${{ inputs.run }}
+      run: '"$RUNNER_TEMP/lock-bin/lock" exec ${LOCK_ENV:+"$LOCK_ENV"} -- bash -c "$LOCK_RUN"'

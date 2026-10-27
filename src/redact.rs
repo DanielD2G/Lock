@@ -3,7 +3,7 @@
 //! Es higiene, no una barrera: evita que un valor aparezca por accidente en
 //! logs o en el contexto de un agente, pero un proceso que quiera filtrar un
 //! secreto puede transformarlo (base64, al reves, por partes) o escribirlo en
-//! un archivo. La barrera real es el Touch ID que autoriza cada `lock run`.
+//! un archivo. La barrera real es el Touch ID que autoriza cada `lock exec`.
 //!
 //! Solo se retiene el final del bloque que todavia podria ser el comienzo de un
 //! secreto; todo lo demas se emite enseguida, asi un programa interactivo no

@@ -56,7 +56,11 @@ impl From<io::Error> for Error {
 
 /// Variables de entorno cifradas: en el Mac con Touch ID, en servidores con una clave.
 #[derive(Parser)]
-#[command(name = "lock", version)]
+#[command(
+    name = "lock",
+    version,
+    after_help = "Atajo para ejecutar con el entorno cargado:\n  lock -- npm run dev          (entorno del repo)\n  lock Navis -- npm run dev    (entorno explicito)"
+)]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
@@ -104,8 +108,8 @@ enum Cmd {
     Rm { target: String },
     /// Importa un archivo .env a un entorno (lo crea si no existe; si existe, agrega y reemplaza)
     Import { env: String, file: PathBuf },
-    /// Ejecuta un comando con el entorno cargado
-    Run {
+    /// Ejecuta un comando con el entorno cargado. Atajo: `lock [ENV] -- cmd`
+    Exec {
         /// Entorno (por defecto, el del repo)
         env: Option<String>,
         /// No redactar la salida aunque no vaya a una terminal
@@ -115,7 +119,12 @@ enum Cmd {
         command: Vec<String>,
     },
     /// Imprime `export ...` para `eval "$(lock load)"` en tu shell
-    Load { env: Option<String> },
+    Load {
+        env: Option<String>,
+        /// sh: `export K='v'`. github: enmascara los valores y los agrega a $GITHUB_ENV
+        #[arg(long, value_enum, default_value_t = LoadFormat::Sh)]
+        format: LoadFormat,
+    },
     /// Vincula el repo actual a un entorno: escribe .env.lock e instala hooks
     Link { env: String },
     /// Copia el entorno de la boveda a .env.lock (lo usa el hook pre-commit)
@@ -173,6 +182,12 @@ enum RecipientCmd {
     Rm { env: String, name: String },
 }
 
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum LoadFormat {
+    Sh,
+    Github,
+}
+
 #[derive(Subcommand)]
 enum HooksCmd {
     /// Instala los hooks en el repo actual (ambos por defecto)
@@ -204,7 +219,7 @@ enum NamedCmd {
 
 fn main() -> ExitCode {
     disable_core_dumps();
-    let cli = Cli::parse();
+    let cli = Cli::parse_from(expand_shortcut(std::env::args().collect()));
     match run(cli.cmd) {
         Ok(code) => code,
         Err(e) => {
@@ -212,6 +227,23 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// `lock -- cmd` y `lock ENV -- cmd` son atajos de `lock exec [ENV] -- cmd`.
+fn expand_shortcut(mut args: Vec<String>) -> Vec<String> {
+    use clap::CommandFactory;
+    let is_command = |a: &str| {
+        Cli::command().get_subcommands().any(|c| c.get_name() == a || c.get_all_aliases().any(|al| al == a))
+    };
+    let shortcut = match args.get(1).map(String::as_str) {
+        Some("--") => true,
+        Some(env) => !env.starts_with('-') && !is_command(env) && args.get(2).is_some_and(|a| a == "--"),
+        None => false,
+    };
+    if shortcut {
+        args.insert(1, "exec".into());
+    }
+    args
 }
 
 fn disable_core_dumps() {
@@ -510,15 +542,21 @@ fn run(cmd: Cmd) -> Result<ExitCode, Error> {
             eprintln!("{} variables importadas a {env}. Borra {} (no lo comitees).", pairs.len(), file.display());
             Ok(ExitCode::SUCCESS)
         }
-        Cmd::Run { env, no_redact, command } => cmd_run(&ctx, env.as_deref(), no_redact, &command),
-        Cmd::Load { env } => {
+        Cmd::Exec { env, no_redact, command } => cmd_exec(&ctx, env.as_deref(), no_redact, &command),
+        Cmd::Load { env, format } => {
             let r = ctx.resolve(env.as_deref())?;
             let u = ctx.open(&r, &reason(&format!("EXPORTAR {} completo en texto plano", r.file.env), ""))?;
-            for (k, v) in u.all()? {
-                // Los nombres vienen validados por el parser; igual no se imprime nada raro.
-                if lockfile::valid_key_name(&k) {
-                    println!("export {k}={}", dotenv::shell_quote(&v));
+            let values = u.all()?;
+            match format {
+                LoadFormat::Sh => {
+                    for (k, v) in &values {
+                        // Los nombres vienen validados por el parser; igual no se imprime nada raro.
+                        if lockfile::valid_key_name(k) {
+                            println!("export {k}={}", dotenv::shell_quote(v));
+                        }
+                    }
                 }
+                LoadFormat::Github => load_github(&values)?,
             }
             Ok(ExitCode::SUCCESS)
         }
@@ -634,7 +672,7 @@ fn cmd_list(ctx: &Ctx) -> Result<ExitCode, Error> {
     Ok(ExitCode::SUCCESS)
 }
 
-/// Pid (o grupo) del hijo de `lock run`, para reenviarle senales.
+/// Pid (o grupo) del hijo de `lock exec`, para reenviarle senales.
 static CHILD: AtomicI32 = AtomicI32::new(0);
 static OWN_GROUP: AtomicBool = AtomicBool::new(false);
 static PENDING: AtomicI32 = AtomicI32::new(0);
@@ -657,7 +695,7 @@ fn deliver(pid: i32, sig: libc::c_int) {
     }
 }
 
-fn cmd_run(ctx: &Ctx, env: Option<&str>, no_redact: bool, argv: &[String]) -> Result<ExitCode, Error> {
+fn cmd_exec(ctx: &Ctx, env: Option<&str>, no_redact: bool, argv: &[String]) -> Result<ExitCode, Error> {
     let r = ctx.resolve(env)?;
     let action = if no_redact {
         format!("SIN REDACCION, ejecutar con {}", r.file.env)
@@ -786,6 +824,32 @@ fn cmd_link(ctx: &Ctx, env: &str) -> Result<ExitCode, Error> {
     eprintln!("Repo vinculado a {env}: {}", path.display());
     eprintln!("Comitea .env.lock y .gitattributes. .env (texto plano) debe estar en .gitignore.");
     Ok(ExitCode::SUCCESS)
+}
+
+/// Para GitHub Actions: enmascara cada valor en los logs (`::add-mask::`) y lo
+/// agrega a `$GITHUB_ENV` para los pasos siguientes, con un delimitador
+/// aleatorio para que un valor no pueda inyectar otras variables.
+fn load_github(values: &[(String, lockfile::Value)]) -> Result<(), Error> {
+    use std::io::Write;
+    let path = std::env::var_os("GITHUB_ENV").ok_or_else(|| Error::msg("GITHUB_ENV no esta definido (solo funciona dentro de GitHub Actions)"))?;
+    // Primero todas las mascaras, antes de que el valor pueda aparecer en un log.
+    for (_, v) in values {
+        for line in v.lines().filter(|l| l.trim().len() >= redact::MIN_LEN) {
+            println!("::add-mask::{line}");
+        }
+    }
+    io::stdout().lock().flush()?;
+    let mut out = Zeroizing::new(String::new());
+    for (k, v) in values {
+        if !lockfile::valid_key_name(k) {
+            continue;
+        }
+        let delim: String = crypt::random_bytes(12).iter().map(|b| format!("{b:02x}")).collect();
+        out.push_str(&format!("{k}<<LOCK_{delim}\n{}\nLOCK_{delim}\n", v.as_str()));
+    }
+    std::fs::OpenOptions::new().append(true).open(path)?.write_all(out.as_bytes())?;
+    eprintln!("lock: {} variables exportadas a los pasos siguientes (enmascaradas en los logs).", values.len());
+    Ok(())
 }
 
 fn cmd_hooks(ctx: &Ctx, cmd: HooksCmd) -> Result<ExitCode, Error> {
@@ -1001,7 +1065,20 @@ fn cmd_named(ctx: &Ctx, file: &str, cmd: NamedCmd) -> Result<ExitCode, Error> {
 
 #[cfg(test)]
 mod tests {
-    use super::reason;
+    use super::{expand_shortcut, reason};
+
+    fn args(s: &str) -> Vec<String> {
+        s.split(' ').map(String::from).collect()
+    }
+
+    #[test]
+    fn shortcut_expands_to_exec() {
+        assert_eq!(expand_shortcut(args("lock -- npm test")), args("lock exec -- npm test"));
+        assert_eq!(expand_shortcut(args("lock Navis -- npm test")), args("lock exec Navis -- npm test"));
+        assert_eq!(expand_shortcut(args("lock list Navis")), args("lock list Navis"));
+        assert_eq!(expand_shortcut(args("lock list --")), args("lock list --"));
+        assert_eq!(expand_shortcut(args("lock --help")), args("lock --help"));
+    }
 
     #[test]
     fn reason_cannot_hide_the_tail() {
