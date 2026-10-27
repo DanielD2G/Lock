@@ -13,16 +13,16 @@ pub fn parse(text: &str) -> Result<Vec<(String, String)>, Error> {
     let mut out: Vec<(String, String)> = Vec::new();
     let mut lines = text.split('\n').enumerate().peekable();
     while let Some((i, raw)) = lines.next() {
-        let bad = |why: &str| Error::msg(format!("linea {}: {why}", i + 1));
+        let bad = |why: &str| Error::msg(format!("line {}: {why}", i + 1));
         let line = raw.trim_start();
         if line.trim().is_empty() || line.starts_with('#') {
             continue;
         }
         let line = line.strip_prefix("export ").map(str::trim_start).unwrap_or(line);
-        let (key, rest) = line.split_once('=').ok_or_else(|| bad("falta '='"))?;
+        let (key, rest) = line.split_once('=').ok_or_else(|| bad("missing '='"))?;
         let key = key.trim();
         if !valid_key_name(key) {
-            return Err(bad("nombre de variable invalido"));
+            return Err(bad("invalid variable name"));
         }
         let rest = rest.trim_start();
 
@@ -39,12 +39,12 @@ pub fn parse(text: &str) -> Result<Vec<(String, String)>, Error> {
                             body.push('\n');
                             body.push_str(next);
                         }
-                        None => return Err(bad("comillas sin cerrar")),
+                        None => return Err(bad("unclosed quote")),
                     }
                 };
                 let after = after.trim();
                 if !after.is_empty() && !after.starts_with('#') {
-                    return Err(bad("texto despues de las comillas"));
+                    return Err(bad("text after the quotes"));
                 }
                 value
             }
@@ -134,7 +134,7 @@ mod tests {
     #[test]
     fn rejects_without_leaking() {
         for bad in ["A=\"abc", "A=\"abc\" basura", "mi secreto sin igual", "1A=x"] {
-            let err = parse(bad).expect_err("debe fallar").to_string();
+            let err = parse(bad).expect_err("must fail").to_string();
             assert!(!err.contains("abc") && !err.contains("secreto"), "{err}");
         }
     }

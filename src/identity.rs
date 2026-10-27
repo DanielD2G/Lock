@@ -46,7 +46,7 @@ impl Kind {
         match s {
             "p256" => Ok(Kind::Software),
             "p256-se" => Ok(Kind::Enclave),
-            _ => Err(Error::msg("tipo de clave desconocido")),
+            _ => Err(Error::msg("unknown key type")),
         }
     }
 
@@ -75,7 +75,7 @@ impl PublicId {
     }
 
     pub fn decode(s: &str) -> Result<PublicId, Error> {
-        let bad = || Error::msg(format!("identidad publica invalida: debe ser {ID_PREFIX}... (la imprime `lock key`)"));
+        let bad = || Error::msg(format!("invalid public identity: must be {ID_PREFIX}... (printed by `lock key`)"));
         let raw = B64.decode(s.trim().strip_prefix(ID_PREFIX).ok_or_else(bad)?).map_err(|_| bad())?;
         if raw.len() != 1 + 2 * PUBLIC_LEN {
             return Err(bad());
@@ -98,8 +98,8 @@ pub fn encode_public(public: &[u8]) -> String {
 }
 
 pub fn decode_public(s: &str) -> Result<Vec<u8>, Error> {
-    let raw = s.strip_prefix(PUB_PREFIX).ok_or_else(|| Error::msg("clave publica invalida"))?;
-    let raw = B64.decode(raw).map_err(|_| Error::msg("clave publica invalida"))?;
+    let raw = s.strip_prefix(PUB_PREFIX).ok_or_else(|| Error::msg("invalid public key"))?;
+    let raw = B64.decode(raw).map_err(|_| Error::msg("invalid public key"))?;
     crypt::parse_public(&raw)?;
     Ok(raw)
 }
@@ -142,7 +142,7 @@ impl Identity {
     }
 
     fn secret_key(&self) -> Result<SecretKey, Error> {
-        SecretKey::from_slice(&self.private).map_err(|_| Error::msg("clave privada invalida"))
+        SecretKey::from_slice(&self.private).map_err(|_| Error::msg("invalid private key"))
     }
 
     pub fn new_software(name: &str) -> Identity {
@@ -191,7 +191,7 @@ impl Identity {
     }
 
     pub fn parse_private(name: &str, s: &str) -> Result<Identity, Error> {
-        let bad = || Error::msg(format!("clave privada invalida: debe empezar con {PRIV_PREFIX}"));
+        let bad = || Error::msg(format!("invalid private key: must start with {PRIV_PREFIX}"));
         let mut parts = s.trim().strip_prefix(PRIV_PREFIX).ok_or_else(bad)?.split('.');
         let raw = Zeroizing::new(B64.decode(parts.next().unwrap_or("")).map_err(|_| bad())?);
         let sk = SecretKey::from_slice(&raw).map_err(|_| bad())?;
@@ -220,7 +220,7 @@ impl Identity {
     pub fn save(&mut self, dir: &Path) -> Result<PathBuf, Error> {
         store::ensure_private_dir(dir)?;
         let path = dir.join(format!("{}.key", self.name));
-        let mut text = String::from("# Identidad de lock. No compartir ni comitear.\n");
+        let mut text = String::from("# lock identity. Do not share or commit.\n");
         text += &format!("name {}\nkind {}\npublic {}\n", self.name, self.kind.as_str(), self.public.encode());
         match self.kind {
             Kind::Software => text += &format!("private {}\n", *self.private_string(&[]).unwrap()),
@@ -248,7 +248,7 @@ impl Identity {
                 .filter_map(|l| l.trim().split_once(' '))
                 .find(|(k, _)| *k == key)
                 .map(|(_, v)| v.trim().to_string())
-                .ok_or_else(|| Error::msg(format!("falta el campo {key}")))
+                .ok_or_else(|| Error::msg(format!("missing field {key}")))
         };
         let name = field("name")?;
         let mut id = match Kind::parse(&field("kind")?)? {
@@ -256,7 +256,7 @@ impl Identity {
             Kind::Enclave => {
                 let public = PublicId::decode(&field("public")?)?;
                 let blob = |k: &str| -> Result<Secret, Error> {
-                    Ok(Zeroizing::new(B64.decode(field(k)?).map_err(|_| Error::msg("blob invalido"))?))
+                    Ok(Zeroizing::new(B64.decode(field(k)?).map_err(|_| Error::msg("invalid blob"))?))
                 };
                 Identity {
                     name,

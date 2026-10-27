@@ -33,7 +33,7 @@ pub type Secret = Zeroizing<Vec<u8>>;
 
 pub fn random_bytes(n: usize) -> Secret {
     let mut b = Zeroizing::new(vec![0u8; n]);
-    getrandom::fill(&mut b).expect("fuente de aleatoriedad del sistema");
+    getrandom::fill(&mut b).expect("system randomness source");
     b
 }
 
@@ -53,9 +53,9 @@ pub fn new_secret_key() -> SecretKey {
 
 pub fn parse_public(sec1: &[u8]) -> Result<PublicKey, Error> {
     if sec1.len() != 65 {
-        return Err(Error::msg("clave publica invalida (se espera P-256 sin comprimir)"));
+        return Err(Error::msg("invalid public key (expected uncompressed P-256)"));
     }
-    PublicKey::from_sec1_bytes(sec1).map_err(|_| Error::msg("clave publica invalida"))
+    PublicKey::from_sec1_bytes(sec1).map_err(|_| Error::msg("invalid public key"))
 }
 
 /// Secreto ECDH crudo (coordenada x), igual al que devuelve el Secure Enclave.
@@ -79,7 +79,7 @@ pub fn signing_key_from(secret: &SecretKey) -> SigningKey {
         let mut out = Zeroizing::new(vec![0u8; KEY_SIZE]);
         Hkdf::<Sha256>::new(Some(&[counter]), &ikm)
             .expand(INFO_SIGNING, &mut out)
-            .expect("32 bytes es un largo valido para HKDF");
+            .expect("32 bytes is a valid HKDF length");
         if let Ok(k) = SigningKey::from_slice(&out) {
             return k;
         }
@@ -148,17 +148,17 @@ fn derive(salt: Option<&[u8]>, ikm: &[u8], info: &[u8]) -> Secret {
     let mut out = Zeroizing::new(vec![0u8; KEY_SIZE]);
     Hkdf::<Sha256>::new(salt, ikm)
         .expand(info, &mut out)
-        .expect("32 bytes es un largo valido para HKDF");
+        .expect("32 bytes is a valid HKDF length");
     out
 }
 
 /// Devuelve nonce || cifrado.
 fn seal(key: &[u8], plaintext: &[u8], aad: &[u8]) -> Vec<u8> {
-    let cipher = Aes256Gcm::new_from_slice(key).expect("clave de 32 bytes");
+    let cipher = Aes256Gcm::new_from_slice(key).expect("32-byte key");
     let nonce = random_bytes(NONCE_SIZE);
     let ct = cipher
-        .encrypt(&Nonce::try_from(nonce.as_slice()).expect("nonce de 12 bytes"), Payload { msg: plaintext, aad })
-        .expect("AES-GCM no falla al cifrar");
+        .encrypt(&Nonce::try_from(nonce.as_slice()).expect("12-byte nonce"), Payload { msg: plaintext, aad })
+        .expect("AES-GCM does not fail when encrypting");
     [nonce.as_slice(), &ct].concat()
 }
 
@@ -166,10 +166,10 @@ fn open(key: &[u8], sealed: &[u8], aad: &[u8]) -> Result<Vec<u8>, Error> {
     if sealed.len() < NONCE_SIZE {
         return Err(Error::Decrypt);
     }
-    let cipher = Aes256Gcm::new_from_slice(key).expect("clave de 32 bytes");
+    let cipher = Aes256Gcm::new_from_slice(key).expect("32-byte key");
     let (nonce, ct) = sealed.split_at(NONCE_SIZE);
     cipher
-        .decrypt(&Nonce::try_from(nonce).expect("nonce de 12 bytes"), Payload { msg: ct, aad })
+        .decrypt(&Nonce::try_from(nonce).expect("12-byte nonce"), Payload { msg: ct, aad })
         .map_err(|_| Error::Decrypt)
 }
 

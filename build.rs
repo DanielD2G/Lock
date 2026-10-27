@@ -28,8 +28,8 @@ fn main() {
         .arg("-o")
         .arg(&lib)
         .status()
-        .expect("no se pudo ejecutar swiftc (instala las Command Line Tools de Xcode)");
-    assert!(status.success(), "swiftc fallo compilando native/se.swift");
+        .expect("could not run swiftc (install the Xcode Command Line Tools)");
+    assert!(status.success(), "swiftc failed compiling native/se.swift");
 
     println!("cargo:rustc-link-search=native={}", out.display());
     println!("cargo:rustc-link-lib=static=lockse");

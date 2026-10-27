@@ -25,7 +25,7 @@ use crate::crypt::{self, Secret};
 use crate::identity::{self, Identity, Signer};
 use crate::Error;
 
-const HEADER: &str = "# Cifrado con lock: no editar a mano. Los nombres son publicos; los valores no.";
+const HEADER: &str = "# Encrypted with lock. Do not edit by hand. Names are public; values are not.";
 const VALUE_PREFIX: &str = "lock1:";
 const MAX_ENTRIES: usize = 10_000;
 const MAX_RECIPIENTS: usize = 256;
@@ -112,84 +112,84 @@ impl LockFile {
         let (mut magic, mut has_version) = (false, false);
         let mut names = HashSet::new();
         for (i, raw) in text.lines().enumerate() {
-            let bad = |why: &str| Error::msg(format!("archivo lock invalido (linea {}): {why}", i + 1));
+            let bad = |why: &str| Error::msg(format!("invalid lock file (line {}): {why}", i + 1));
             let line = raw.trim();
             if line.is_empty() || line.starts_with('#') {
                 continue;
             }
             if f.signature.is_some() {
-                return Err(bad("contenido despues de la firma"));
+                return Err(bad("content after the signature"));
             }
             if let Some(rest) = line.strip_prefix('@') {
-                let (tag, val) = rest.split_once(' ').ok_or_else(|| bad("linea incompleta"))?;
+                let (tag, val) = rest.split_once(' ').ok_or_else(|| bad("incomplete line"))?;
                 match tag {
-                    "lock" if magic => return Err(bad("@lock repetido")),
+                    "lock" if magic => return Err(bad("duplicate @lock")),
                     "lock" if val == "v1" => magic = true,
-                    "lock" => return Err(bad("version de formato no soportada")),
-                    "env" if !f.env.is_empty() => return Err(bad("@env repetido")),
+                    "lock" => return Err(bad("unsupported format version")),
+                    "env" if !f.env.is_empty() => return Err(bad("duplicate @env")),
                     "env" if valid_env_name(val) => f.env = val.to_string(),
-                    "env" => return Err(bad("nombre de entorno invalido")),
-                    "version" if has_version => return Err(bad("@version repetido")),
+                    "env" => return Err(bad("invalid environment name")),
+                    "version" if has_version => return Err(bad("duplicate @version")),
                     "version" => {
-                        f.version = val.parse().map_err(|_| bad("version invalida"))?;
+                        f.version = val.parse().map_err(|_| bad("invalid version"))?;
                         has_version = true;
                     }
                     "recipient" => {
                         let p: Vec<&str> = val.split(' ').collect();
-                        let [name, kind, public, wrap] = p[..] else { return Err(bad("destinatario mal formado")) };
+                        let [name, kind, public, wrap] = p[..] else { return Err(bad("malformed recipient")) };
                         if !valid_id_name(name) || identity::Kind::parse(kind).is_err() {
-                            return Err(bad("destinatario invalido"));
+                            return Err(bad("invalid recipient"));
                         }
-                        let (eph, wrapped) = wrap.split_once('.').ok_or_else(|| bad("destinatario mal formado"))?;
-                        let public = identity::decode_public(public).map_err(|_| bad("clave publica invalida"))?;
+                        let (eph, wrapped) = wrap.split_once('.').ok_or_else(|| bad("malformed recipient"))?;
+                        let public = identity::decode_public(public).map_err(|_| bad("invalid public key"))?;
                         if f.recipients.iter().any(|r| r.name == name || r.public == public) {
-                            return Err(bad("destinatario repetido"));
+                            return Err(bad("duplicate recipient"));
                         }
                         f.recipients.push(Recipient {
                             name: name.into(),
                             kind: kind.into(),
                             public,
-                            eph: B64.decode(eph).map_err(|_| bad("base64 invalido"))?,
-                            wrapped: B64.decode(wrapped).map_err(|_| bad("base64 invalido"))?,
+                            eph: B64.decode(eph).map_err(|_| bad("invalid base64"))?,
+                            wrapped: B64.decode(wrapped).map_err(|_| bad("invalid base64"))?,
                         });
                     }
                     "signature" => {
                         let p: Vec<&str> = val.split(' ').collect();
-                        let [signer, public, sig] = p[..] else { return Err(bad("firma mal formada")) };
+                        let [signer, public, sig] = p[..] else { return Err(bad("malformed signature")) };
                         if !valid_id_name(signer) {
-                            return Err(bad("firmante invalido"));
+                            return Err(bad("invalid signer"));
                         }
                         f.signature = Some(SignatureLine {
                             signer: signer.into(),
-                            public: identity::decode_public(public).map_err(|_| bad("clave de firma invalida"))?,
-                            sig: B64.decode(sig).map_err(|_| bad("base64 invalido"))?,
+                            public: identity::decode_public(public).map_err(|_| bad("invalid signing key"))?,
+                            sig: B64.decode(sig).map_err(|_| bad("invalid base64"))?,
                         });
                     }
-                    _ => return Err(bad("etiqueta desconocida")),
+                    _ => return Err(bad("unknown tag")),
                 }
                 continue;
             }
-            let (name, val) = line.split_once('=').ok_or_else(|| bad("se esperaba NOMBRE=lock1:..."))?;
+            let (name, val) = line.split_once('=').ok_or_else(|| bad("expected NAME=lock1:..."))?;
             if !valid_key_name(name) {
-                return Err(bad("nombre de variable invalido"));
+                return Err(bad("invalid variable name"));
             }
             if !names.insert(name.to_string()) {
-                return Err(bad("variable repetida"));
+                return Err(bad("duplicate variable"));
             }
-            let sealed = val.strip_prefix(VALUE_PREFIX).ok_or_else(|| bad("valor sin cifrar o corrupto"))?;
-            f.entries.push((name.to_string(), B64.decode(sealed).map_err(|_| bad("base64 invalido"))?));
+            let sealed = val.strip_prefix(VALUE_PREFIX).ok_or_else(|| bad("unencrypted or corrupt value"))?;
+            f.entries.push((name.to_string(), B64.decode(sealed).map_err(|_| bad("invalid base64"))?));
         }
         if !magic || f.env.is_empty() || !has_version {
-            return Err(Error::msg("no es un archivo de lock (falta @lock, @env o @version)"));
+            return Err(Error::msg("not a lock file (missing @lock, @env or @version)"));
         }
         if f.recipients.is_empty() || f.recipients.len() > MAX_RECIPIENTS || f.entries.len() > MAX_ENTRIES {
-            return Err(Error::msg("archivo lock invalido: cantidad de destinatarios o variables fuera de rango"));
+            return Err(Error::msg("invalid lock file: number of recipients or variables out of range"));
         }
         if f.signature.is_none() {
-            return Err(Error::msg("archivo lock sin firma"));
+            return Err(Error::msg("lock file has no signature"));
         }
         if f.entries.windows(2).any(|w| w[0].0 >= w[1].0) {
-            return Err(Error::msg("archivo lock invalido: variables fuera de orden"));
+            return Err(Error::msg("invalid lock file: variables out of order"));
         }
         Ok(f)
     }
@@ -229,14 +229,14 @@ impl LockFile {
     /// Verifica que la firma sea valida y de un firmante de confianza.
     /// Devuelve el nombre local de ese firmante.
     pub fn verify<'a>(&self, trusted: &'a [Signer]) -> Result<&'a str, Error> {
-        let sig = self.signature.as_ref().ok_or_else(|| Error::msg("archivo sin firma"))?;
+        let sig = self.signature.as_ref().ok_or_else(|| Error::msg("file has no signature"))?;
         if !crypt::verify(&sig.public, self.canonical().as_bytes(), &sig.sig) {
-            return Err(Error::msg(format!("{}: la firma no es valida; el archivo fue alterado", self.env)));
+            return Err(Error::msg(format!("{}: the signature is not valid; the file was tampered with", self.env)));
         }
         trusted.iter().find(|t| t.public == sig.public).map(|t| t.name.as_str()).ok_or_else(|| {
             Error::msg(format!(
-                "{} v{} lo firmo \"{}\", que no es de confianza en este equipo. \
-                 Si es una identidad tuya, agregala con `lock trust add <nombre> <lockid1:...>`.",
+                "{} v{} was signed by \"{}\", who is not trusted on this machine. \
+                 If it is an identity of yours, add it with `lock trust add <name> <lockid1:...>`.",
                 self.env, self.version, sig.signer
             ))
         })
@@ -245,7 +245,7 @@ impl LockFile {
     /// Crea un entorno vacio con los destinatarios dados.
     pub fn create(env: &str, recipients: &[(String, identity::PublicId)]) -> Result<Unlocked, Error> {
         if !valid_env_name(env) {
-            return Err(Error::msg("nombre de entorno invalido"));
+            return Err(Error::msg("invalid environment name"));
         }
         let mut u = Unlocked {
             file: LockFile { env: env.into(), version: 0, recipients: vec![], entries: vec![], signature: None },
@@ -271,7 +271,7 @@ impl LockFile {
                 .and_then(|shared| crypt::unwrap(&shared, &r.eph, &r.public, &r.wrapped));
             match attempt {
                 Ok(data_key) => return Ok(Unlocked { file: self.clone(), data_key }),
-                Err(e) if e.to_string().contains("cancelado") => return Err(e),
+                Err(e) if e.to_string().contains("cancelled") => return Err(e),
                 Err(e) => last_err = Some(Error::msg(format!("{}: {e}", id.name))),
             }
         }
@@ -280,7 +280,7 @@ impl LockFile {
         }
         let names: Vec<&str> = self.recipients.iter().map(|r| r.name.as_str()).collect();
         Err(Error::msg(format!(
-            "ninguna de tus claves puede abrir {} (destinatarios: {}). `lock key` muestra tu identidad para que te agreguen.",
+            "none of your keys can open {} (recipients: {}). `lock key` shows your identity so someone can add you.",
             self.env,
             names.join(", ")
         )))
@@ -291,7 +291,7 @@ impl Unlocked {
     pub fn get(&self, name: &str) -> Result<Option<Value>, Error> {
         let Some((_, sealed)) = self.file.entries.iter().find(|(n, _)| n == name) else { return Ok(None) };
         let raw = crypt::open_value(&self.data_key, &self.file.env, name, sealed)?;
-        let s = std::str::from_utf8(&raw).map_err(|_| Error::msg("valor no es UTF-8"))?;
+        let s = std::str::from_utf8(&raw).map_err(|_| Error::msg("value is not UTF-8"))?;
         Ok(Some(Zeroizing::new(s.to_string())))
     }
 
@@ -305,7 +305,7 @@ impl Unlocked {
 
     pub fn set(&mut self, name: &str, value: &str) -> Result<(), Error> {
         if !valid_key_name(name) {
-            return Err(Error::msg(format!("nombre invalido: {name} (usa letras, numeros y _)")));
+            return Err(Error::msg(format!("invalid name: {name} (use letters, digits and _)")));
         }
         let sealed = crypt::seal_value(&self.data_key, &self.file.env, name, value.as_bytes());
         match self.file.entries.iter_mut().find(|(n, _)| n == name) {
@@ -326,10 +326,10 @@ impl Unlocked {
 
     pub fn add_recipient(&mut self, name: &str, id: &identity::PublicId) -> Result<(), Error> {
         if !valid_id_name(name) {
-            return Err(Error::msg(format!("nombre de destinatario invalido: {name}")));
+            return Err(Error::msg(format!("invalid recipient name: {name}")));
         }
         if self.file.recipients.iter().any(|r| r.name == name || r.public == id.encryption) {
-            return Err(Error::msg(format!("{name} ya es destinatario (o su clave ya esta agregada)")));
+            return Err(Error::msg(format!("{name} is already a recipient (or its key is already added)")));
         }
         let (eph, wrapped) = crypt::wrap(&self.data_key, &id.encryption)?;
         self.file.recipients.push(Recipient {
@@ -346,10 +346,10 @@ impl Unlocked {
     /// visto antes sigue comprometido, pero no podra abrir versiones nuevas.
     pub fn remove_recipient(&mut self, name: &str) -> Result<(), Error> {
         if !self.file.recipients.iter().any(|r| r.name == name) {
-            return Err(Error::msg(format!("{name} no es destinatario de {}", self.file.env)));
+            return Err(Error::msg(format!("{name} is not a recipient of {}", self.file.env)));
         }
         if self.file.recipients.len() == 1 {
-            return Err(Error::msg("no se puede quitar el ultimo destinatario"));
+            return Err(Error::msg("cannot remove the last recipient"));
         }
         let values = self.all()?;
         let keep: Vec<Recipient> = self.file.recipients.drain(..).filter(|r| r.name != name).collect();
@@ -419,7 +419,7 @@ mod tests {
         u.set("DB_URL", "postgres://evil").unwrap();
         let forged = LockFile::parse(&u.seal(&attacker, "t").unwrap().serialize()).unwrap();
         let err = forged.unlock(std::slice::from_ref(&victim), &trust(&[&victim]), "t").err().unwrap();
-        assert!(err.to_string().contains("no es de confianza"), "{err}");
+        assert!(err.to_string().contains("not trusted"), "{err}");
     }
 
     #[test]
@@ -455,8 +455,8 @@ mod tests {
             text.lines().filter(|l| !l.starts_with("@signature")).map(|l| format!("{l}\n")).collect(),
             "@lock v1\n@env Demo\n".into(),
         ] {
-            let err = LockFile::parse(&bad).expect_err("debe fallar");
-            assert!(!err.to_string().contains("plaintext-secret"), "no debe filtrar contenido");
+            let err = LockFile::parse(&bad).expect_err("must fail");
+            assert!(!err.to_string().contains("plaintext-secret"), "must not leak content");
         }
     }
 

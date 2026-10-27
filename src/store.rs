@@ -35,7 +35,7 @@ impl Store {
         let home = match std::env::var_os("LOCK_HOME") {
             Some(h) => PathBuf::from(h),
             None => {
-                let h = std::env::var_os("HOME").ok_or_else(|| Error::msg("HOME no esta definido"))?;
+                let h = std::env::var_os("HOME").ok_or_else(|| Error::msg("HOME is not set"))?;
                 PathBuf::from(h).join(".lock")
             }
         };
@@ -52,7 +52,7 @@ impl Store {
 
     pub fn env_path(&self, env: &str) -> Result<PathBuf, Error> {
         if !lockfile::valid_env_name(env) {
-            return Err(Error::msg("nombre de entorno invalido (usa letras, numeros, . _ -)"));
+            return Err(Error::msg("invalid environment name (use letters, digits, . _ -)"));
         }
         Ok(self.envs_dir().join(format!("{env}.lock")))
     }
@@ -163,14 +163,14 @@ impl Store {
         let version: u64 = version.parse().unwrap_or(0);
         if file.version < version {
             return Err(Error::msg(format!(
-                "{} v{} es mas viejo que la v{version} que este equipo ya vio (posible rollback). \
-                 Si es intencional: LOCK_ALLOW_ROLLBACK=1",
+                "{} v{} is older than v{version}, which this machine has already seen (possible rollback). \
+                 If intentional: LOCK_ALLOW_ROLLBACK=1",
                 file.env, file.version
             )));
         }
         if file.version == version && !digest.is_empty() && digest != file.digest() {
             return Err(Error::msg(format!(
-                "{} v{} no coincide con la v{version} que este equipo ya vio: hay dos versiones distintas con el mismo numero (conflicto)",
+                "{} v{} does not match v{version}, which this machine has already seen: two different versions share the same number (conflict)",
                 file.env, file.version
             )));
         }
@@ -211,7 +211,7 @@ pub fn ensure_private_dir(dir: &Path) -> Result<(), Error> {
             }
             Ok(())
         }
-        Ok(_) => Err(Error::msg(format!("{} existe y no es un directorio", dir.display()))),
+        Ok(_) => Err(Error::msg(format!("{} exists and is not a directory", dir.display()))),
         Err(_) => {
             fs::DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
             Ok(())
@@ -244,19 +244,19 @@ pub fn read_limited(path: &Path, max: u64) -> Result<String, Error> {
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(path)
         .map_err(|e| match e.raw_os_error() {
-            Some(libc::ELOOP) => Error::msg(format!("{}: es un symlink; lock no los sigue", path.display())),
+            Some(libc::ELOOP) => Error::msg(format!("{}: is a symlink; lock does not follow them", path.display())),
             _ => Error::Io(e),
         })?;
     let meta = f.metadata()?;
     if !meta.is_file() {
-        return Err(Error::msg(format!("{}: no es un archivo regular", path.display())));
+        return Err(Error::msg(format!("{}: is not a regular file", path.display())));
     }
     if meta.len() > max {
-        return Err(Error::msg(format!("{}: demasiado grande ({} bytes)", path.display(), meta.len())));
+        return Err(Error::msg(format!("{}: too large ({} bytes)", path.display(), meta.len())));
     }
     let mut buf = Vec::new();
     f.take(max + 1).read_to_end(&mut buf)?;
-    String::from_utf8(buf).map_err(|_| Error::msg(format!("{}: no es texto UTF-8", path.display())))
+    String::from_utf8(buf).map_err(|_| Error::msg(format!("{}: is not UTF-8 text", path.display())))
 }
 
 pub fn read_lockfile(path: &Path) -> Result<LockFile, Error> {

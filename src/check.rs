@@ -76,7 +76,7 @@ fn patterns() -> Vec<Regex> {
         format!(r#"ProcessInfo\.processInfo\.environment\[\s*"{NAME}"\s*\]"#),
     ]
     .iter()
-    .map(|p| Regex::new(p).expect("regex valida"))
+    .map(|p| Regex::new(p).expect("valid regex"))
     .collect()
 }
 
@@ -95,7 +95,7 @@ fn parse_ignore(text: &str) -> Result<Vec<String>, Error> {
         }
         let base = l.strip_suffix('*').unwrap_or(l);
         if base.len() < 2 || !base.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-            return Err(Error::msg(format!("{IGNORE_FILE} linea {}: patron invalido (minimo 2 caracteres antes de *)", i + 1)));
+            return Err(Error::msg(format!("{IGNORE_FILE} line {}: invalid pattern (at least 2 characters before *)", i + 1)));
         }
         out.push(l.to_string());
     }
@@ -208,7 +208,7 @@ fn walk(root: &Path, rel: &Path, out: &mut Vec<PathBuf>) -> Result<(), Error> {
 pub fn commit_files(root: &Path, sha: &str) -> Result<(Files, Option<String>), Error> {
     let out = Command::new("git").arg("-C").arg(root).args(["ls-tree", "-r", "-z", "--long", sha]).output()?;
     if !out.status.success() {
-        return Err(Error::msg(format!("git ls-tree {sha} fallo")));
+        return Err(Error::msg(format!("git ls-tree {sha} failed")));
     }
     // Formato: "<modo> <tipo> <objeto> <tamano>\t<ruta>\0"
     let mut wanted: Vec<(PathBuf, String)> = vec![];

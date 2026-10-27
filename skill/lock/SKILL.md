@@ -66,9 +66,9 @@ Toda escritura pide Touch ID (descifrar y firmar comparten uno solo).
 
 | Mensaje | Que hacer |
 |---|---|
-| `no hay claves ... Corre lock init` | Lo hace el usuario, no tu. |
-| `ninguna de tus claves puede abrir X` | Esta maquina no es destinataria: el usuario la agrega con `lock recipient add`. |
-| `lo firmo "..." que no es de confianza` | El archivo no viene de una identidad confiable. **No lo uses ni lo "arregles"**: avisa al usuario, puede ser un ataque. |
-| `posible rollback` | Alguien volvio a una version vieja. Avisa al usuario. |
-| `conflicto: ... contenido distinto` | Dos versiones divergentes: decide el usuario (`lock pull --force` o `lock dump --force`). |
-| `Touch ID cancelado` | El usuario rechazo. Pregunta antes de reintentar. |
+| `no keys in ... Run lock init` | Lo hace el usuario, no tu. |
+| `none of your keys can open X` | Esta maquina no es destinataria: el usuario la agrega con `lock recipient add`. |
+| `was signed by "...", who is not trusted` | El archivo no viene de una identidad confiable. **No lo uses ni lo "arregles"**: avisa al usuario, puede ser un ataque. |
+| `possible rollback` | Alguien volvio a una version vieja. Avisa al usuario. |
+| `conflict: ... different content` / `differs` | Dos versiones divergentes: decide el usuario (`lock pull --force` o `lock dump --force`). |
+| `Touch ID cancelled` | El usuario rechazo. Pregunta antes de reintentar. |

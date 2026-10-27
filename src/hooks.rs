@@ -22,7 +22,7 @@ pub const HOOKS: [(&str, &str); 2] = [("pre-commit", "lock dump --stage"), ("pre
 
 fn block(cmd: &str) -> String {
     format!(
-        "{BEGIN}\nif command -v lock >/dev/null 2>&1; then\n  {cmd} || exit 1\nelse\n  echo \"lock: no esta instalado; se omite '{cmd}'\" >&2\nfi\n{END}\n"
+        "{BEGIN}\nif command -v lock >/dev/null 2>&1; then\n  {cmd} || exit 1\nelse\n  echo \"lock: not installed; skipping '{cmd}'\" >&2\nfi\n{END}\n"
     )
 }
 
@@ -33,7 +33,7 @@ fn git_path(root: &Path, what: &str) -> Result<PathBuf, Error> {
         .args(["rev-parse", "--path-format=absolute", what])
         .output()?;
     if !out.status.success() {
-        return Err(Error::msg("no es un repositorio git"));
+        return Err(Error::msg("not a git repository"));
     }
     Ok(PathBuf::from(String::from_utf8_lossy(&out.stdout).trim()))
 }
@@ -45,7 +45,7 @@ fn hooks_dir(root: &Path) -> Result<PathBuf, Error> {
         .args(["rev-parse", "--path-format=absolute", "--git-path", "hooks"])
         .output()?;
     if !out.status.success() {
-        return Err(Error::msg("no es un repositorio git"));
+        return Err(Error::msg("not a git repository"));
     }
     Ok(PathBuf::from(String::from_utf8_lossy(&out.stdout).trim()))
 }
@@ -56,7 +56,7 @@ pub fn install(root: &Path, which: &[&str]) -> Result<Vec<PathBuf>, Error> {
     let common = git_path(root, "--git-common-dir")?;
     if !dir.starts_with(&common) {
         eprintln!(
-            "lock: aviso: core.hooksPath apunta a {}; los hooks se instalan ahi y pueden afectar a otros repos",
+            "lock: warning: core.hooksPath points to {}; hooks are installed there and may affect other repos",
             dir.display()
         );
     }
@@ -67,7 +67,7 @@ pub fn install(root: &Path, which: &[&str]) -> Result<Vec<PathBuf>, Error> {
     for (hook, cmd) in HOOKS.iter().filter(|(h, _)| which.contains(h)) {
         let path = dir.join(hook);
         let current = read_hook(&path).map_err(|e| {
-            Error::msg(format!("{e}\nAgrega a mano en {}: {cmd}", path.display()))
+            Error::msg(format!("{e}\nAdd manually to {}: {cmd}", path.display()))
         })?;
         plans.push((path, with_block(&current, &block(cmd))));
     }
@@ -86,7 +86,7 @@ fn read_hook(path: &Path) -> Result<String, Error> {
         Err(e) if e.kind() == ErrorKind::NotFound => return Ok(String::new()),
         Err(e) => return Err(e.into()),
         Ok(m) if !m.file_type().is_file() => {
-            return Err(Error::msg(format!("{} no es un archivo regular (symlink?); no lo toco", path.display())));
+            return Err(Error::msg(format!("{} is not a regular file (symlink?); leaving it alone", path.display())));
         }
         Ok(_) => {}
     }
@@ -95,7 +95,7 @@ fn read_hook(path: &Path) -> Result<String, Error> {
     if let Some(interp) = shebang.strip_prefix("#!")
         && !["sh", "bash", "zsh", "dash", "ksh"].iter().any(|s| interp.split(['/', ' ']).any(|w| w == *s))
     {
-        return Err(Error::msg(format!("{} no es un script de shell; no lo toco", path.display())));
+        return Err(Error::msg(format!("{} is not a shell script; leaving it alone", path.display())));
     }
     Ok(text)
 }

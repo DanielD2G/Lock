@@ -15,7 +15,7 @@ Your AI agents can use them without ever seeing a value.
 
 ```bash
 $ lock -- npm run dev
-# 👆 Touch ID: "ejecutar con Navis: npm run dev"
+# 👆 Touch ID: "run with Navis: npm run dev"
 ```
 
 ---
@@ -325,7 +325,7 @@ Then, on the new one, `lock trust add mac1 lockid1:…`.
 - **Rollbacks:** each machine remembers the highest version it has seen, and
   detects two different files with the same version number.
 - **Curious agents:** decrypting requires Touch ID. The prompt shows the
-  action (`ejecutar`, `MOSTRAR`, `EXPORTAR`, `SIN REDACCION`) and the command
+  action (`run`, `SHOW`, `EXPORT`, `UNREDACTED`) and the command
   as one clean line. Long commands are cut in the middle, so the end is never
   hidden.
 - **Hostile repos:** lock never follows symlinks, writes through an exclusive
@@ -363,7 +363,7 @@ Then, on the new one, `lock trust add mac1 lockid1:…`.
 ## File format
 
 ```text
-# Cifrado con lock: no editar a mano. Los nombres son publicos; los valores no.
+# Encrypted with lock. Do not edit by hand. Names are public; values are not.
 @lock v1
 @env Navis
 @version 7

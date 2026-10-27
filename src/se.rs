@@ -108,7 +108,7 @@ mod imp {
     }
 
     fn c_reason(reason: &str) -> CString {
-        CString::new(reason.replace('\0', " ")).expect("sin NUL")
+        CString::new(reason.replace('\0', " ")).expect("no NUL")
     }
 
     unsafe fn take_bytes(ptr: *mut c_uchar, len: c_long) -> Vec<u8> {
@@ -119,12 +119,12 @@ mod imp {
 
     unsafe fn take_error(err: *mut c_char) -> Error {
         if err.is_null() {
-            return Error::msg("secure enclave: error desconocido");
+            return Error::msg("secure enclave: unknown error");
         }
         let msg = unsafe { CStr::from_ptr(err) }.to_string_lossy().into_owned();
         unsafe { libc::free(err.cast()) };
         if msg.contains("-128") || msg.contains("Canceled") || msg.contains("cancel") {
-            return Error::msg("Touch ID cancelado");
+            return Error::msg("Touch ID cancelled");
         }
         Error::msg(format!("secure enclave: {msg}"))
     }
@@ -135,7 +135,7 @@ mod imp {
     use super::KeyKind;
     use crate::Error;
 
-    const UNAVAILABLE: &str = "secure enclave: solo disponible en macOS";
+    const UNAVAILABLE: &str = "secure enclave: only available on macOS";
 
     pub fn available() -> bool {
         false
