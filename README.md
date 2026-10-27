@@ -253,19 +253,59 @@ The printed key **pins** your identities as trusted signers: the server
 rejects any `.env.lock` you didn't sign, even if it's encrypted to its key.
 The child process receives the secrets, never `LOCK_KEY`.
 
+## 🐳 Docker
+
+lock ships as a tiny `FROM scratch` image (just the static binary, ~3 MB) for
+amd64 and arm64. Copy it into any image with one line:
+
+```dockerfile
+FROM node:22-alpine
+COPY --from=ghcr.io/danield2g/lock:0.2.0 /lock /usr/local/bin/lock
+
+WORKDIR /app
+COPY . .                     # includes .env.lock
+RUN npm ci
+
+CMD ["lock", "--", "node", "server.js"]
+```
+
+```bash
+docker run -e LOCK_KEY="$LOCK_KEY" my-app
+```
+
+- Pass `LOCK_KEY` **at runtime** (`-e`, your orchestrator's secrets), never as
+  a build `ARG` or `ENV`: those get baked into the image layers.
+- Make sure `.env.lock` isn't in your `.dockerignore`.
+- Works on any base image (Alpine, Debian, distroless): the binary is static
+  and has no dependencies.
+- Containers are ephemeral, so there's no rollback memory unless you mount a
+  volume at `LOCK_HOME` (default `~/.lock`).
+
+<details>
+<summary>Without the registry image</summary>
+
+```dockerfile
+RUN curl -fsSL https://raw.githubusercontent.com/DanielD2G/Lock/main/install.sh \
+    | LOCK_VERSION=v0.2.0 LOCK_INSTALL_DIR=/usr/local/bin sh
+```
+
+Needs `curl` and `tar` in the image.
+
+</details>
+
 ## ⚙️ GitHub Actions
 
 ```yaml
 - uses: actions/checkout@v4
 
 # Run a command with the environment loaded (output is redacted)
-- uses: DanielD2G/Lock@v0.1.0
+- uses: DanielD2G/Lock@v0.2.0
   with:
     key: ${{ secrets.LOCK_KEY }}
     run: npm run deploy
 
 # …or export the variables to the following steps (masked in logs)
-- uses: DanielD2G/Lock@v0.1.0
+- uses: DanielD2G/Lock@v0.2.0
   with:
     key: ${{ secrets.LOCK_KEY }}
     env: Navis
